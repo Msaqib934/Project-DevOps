@@ -21,7 +21,7 @@ resource "aws_codepipeline" "frontcodepipeline" {
         Owner      = "Msaqib934"
         Repo       = "automate-container-microservices-aws-copilot"
         Branch           = "main"
-        OAuthToken       = "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"
+        OAuthToken       = "Enter Token Here"
       }
     }
   }
