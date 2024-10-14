@@ -1,5 +1,5 @@
 Error 1:
-COMMAND_EXECUTION_ERROR: Error while executing command: aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 824813378441.dkr.ecr.us-east-1.amazonaws.com. Reason: exit status 1
+COMMAND_EXECUTION_ERROR: Error while executing command: aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin xxxxx.dkr.ecr.us-east-1.amazonaws.com. Reason: exit status 1
 
 Solution:
 Attach role AmazonEC2ContainerRegistryPowerUser with codebuild role
