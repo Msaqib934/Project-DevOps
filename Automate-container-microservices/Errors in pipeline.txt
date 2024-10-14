@@ -1,0 +1,22 @@
+Error 1:
+COMMAND_EXECUTION_ERROR: Error while executing command: aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 824813378441.dkr.ecr.us-east-1.amazonaws.com. Reason: exit status 1
+
+Solution:
+Attach role AmazonEC2ContainerRegistryPowerUser with codebuild role
+
+
+Error 2: Stopped: [emerg] 1#1: host not found in upstream?
+
+Solution:
+Add resolver in default.conf, like mentioned below
+
+location /api/ {
+        resolver 169.254.169.253;
+        set $example "backend.myapp.local:10000";
+        proxy_pass http://$example; # Assuming backend is registered in Cloud Map with the namespace myapp.local
+    }
+
+Error 3: "No matching artifact paths found"
+
+Solution:
+Add location cd ../.. in buildspec.yaml file to return to exact location
