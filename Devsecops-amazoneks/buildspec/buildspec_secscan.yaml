@@ -1,0 +1,51 @@
+version: 0.2
+phases:
+  install: # Install AWS CLI, Maven, AWS CodeGuru CLI, Checkov
+    runtime-versions:
+      java: latest
+    commands:
+       - apt-get update
+       - apt-get install -y git python3 python3-pip
+       - pip install awscli checkov
+       - apt-get install -y wget apt-transport-https gnupg lsb-release curl
+       - curl -OL https://github.com/aws/aws-codeguru-cli/releases/download/0.2.3/aws-codeguru-cli.zip
+       - unzip aws-codeguru-cli.zip
+       - export PATH=$PATH:./aws-codeguru-cli/bin
+       - curl -sSL https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+       - helm repo add stable https://charts.helm.sh/stable && helm repo update
+
+  pre_build: # Check availability of Maven and its version, capturing previous commit ID
+    commands:
+      - echo -e '\nMaven version:'
+      - mvn --version
+      - echo -e '\nCheckov version:'
+      - checkov --version
+      - echo -e '\nHelm version:'
+      - helm version
+
+  build: # Static Code Analysis of Application
+    commands:
+      - echo -e "\nRunning Dockerfile Scan"
+      - checkov -f code/app/Dockerfile --framework dockerfile --soft-fail --summary-position bottom
+      - echo -e "\nRunning Scan of Helm Chart files"
+      - cp -pv helm_charts/$EKS_CODEBUILD_APP_NAME/values.dev.yaml helm_charts/$EKS_CODEBUILD_APP_NAME/values.yaml
+      - checkov -d helm_charts/$EKS_CODEBUILD_APP_NAME --framework helm --soft-fail --summary-position bottom
+      - rm -rfv helm_charts/$EKS_CODEBUILD_APP_NAME/values.yaml
+      - echo -e "\nRunning Static Code Analysis of app using AWS CodeGuru"
+      - cd code/app && mvn clean compile
+      - export BASE=${CODEBUILD_SRC_DIR}
+      - export SRC=${BASE}/code/app/src
+      - export APP_BUILD_ARTIFACTS=${BASE}/code/app/target/classes
+      - mkdir ${BASE}/output
+      - export OUTPUT=${BASE}/output
+      - export CURRENT_COMMIT=${CODEBUILD_RESOLVED_SOURCE_VERSION}
+      - export PREVIOUS_COMMIT=$(git log --format="%H" -n 2 | tail -1)
+      - echo $BASE $SRC $APP_BUILD_ARTIFACTS $OUTPUT $CURRENT_COMMIT $PREVIOUS_COMMIT
+      - ls -lhtar $BASE $SRC
+      - |
+        if [ $PREVIOUS_COMMIT = $CURRENT_COMMIT ]; then
+           echo -e "\nNo Previous Commit, hence incremental code scan will not happen"
+        else
+           echo -e "\nAnalysing incremental changes between $CURRENT_COMMIT and $PREVIOUS_COMMIT"
+           $BASE/aws-codeguru-cli/bin/aws-codeguru-cli --region $AWS_REGION --bucket-name $CG_REVIEWER_BUCKET_NAME --root-dir $BASE --build $APP_BUILD_ARTIFACTS --src $SRC --commit-range $PREVIOUS_COMMIT:$CURRENT_COMMIT --output $OUTPUT --no-prompt
+        fi
