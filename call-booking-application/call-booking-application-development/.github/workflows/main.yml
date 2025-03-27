@@ -1,0 +1,69 @@
+name: CI
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    env:
+      ECR_REGISTRY: 824813378441.dkr.ecr.us-east-1.amazonaws.com
+      IMAGE_TAG: ${{ github.run_number }}
+
+    strategy:
+      matrix:
+        app: [admin-ui, admin-api, user-ui, user-api] # List of subdirectories and repositories
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Directory Permissions
+        run: chmod -R 755 ./
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and Push to ECR
+        run: |
+          cd ${{ matrix.app }}
+          docker build -t $ECR_REGISTRY/${{ matrix.app }}:${{ github.run_number }} .
+          docker push $ECR_REGISTRY/${{ matrix.app }}:${{ github.run_number }}
+
+      - name: Install kubectl
+        run: |
+          curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.32.0/2024-12-20/bin/linux/amd64/kubectl
+          chmod +x ./kubectl
+          sudo mv ./kubectl /usr/local/bin
+
+      - name: Set up kubeconfig
+        run: |
+          aws eks --region us-east-1 update-kubeconfig --name demo
+
+      - name: Deploy MongoDB
+        run: |
+          cd kubernetes/mongo
+          # kubectl create namespace database || true
+          kubectl apply -f statefulset2.yaml
+          kubectl apply -f service.yaml
+          
+      - name: Deploy to admin-ui, admin-api, user-ui, user-api
+        run: |
+          # Access the specific folder for the admin-api deployment
+          cd kubernetes/${{ matrix.app }}
+
+          # Replace image tag and ECR registry in the deploy.yaml
+          sed -i "s|{{IMAGE_TAG}}|$IMAGE_TAG|g" dynamic2.yaml
+          sed -i "s|{{ECR_REGISTRY}}|$ECR_REGISTRY|g" dynamic2.yaml
+
+          # Apply the Kubernetes manifest to EKS
+          # kubectl create namespace admin || true
+          # kubectl create namespace user || true
+          kubectl apply -f dynamic2.yaml
