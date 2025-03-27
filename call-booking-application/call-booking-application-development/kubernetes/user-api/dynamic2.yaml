@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-api
+  labels:
+    name: user-api
+  namespace: user
+spec:
+  selector:
+    matchLabels:
+      app: user-api
+      module: user
+  template:
+    metadata:
+      labels:
+        app: user-api
+        module: user
+    spec:
+      serviceAccountName: user-service-account
+      nodeSelector:
+        module: user
+      containers:
+      - image: {{ECR_REGISTRY}}/user-api:{{IMAGE_TAG}}
+        name: user-api
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          runAsGroup: 1001
+        ports:
+        - containerPort: 1025
+          name: http
+        env:
+          - name: MONGO_URL
+            valueFrom:
+              secretKeyRef:
+                name: user-api-secrets-csi
+                key: connectionstring
+          - name: PORT 
+            value: "1025"
+          - name: ADMIN_EMAIL
+            value: admin@deekshithsn.co.in
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "1Gi"
+          limits:
+            cpu: "500m"
+            memory: "2Gi"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 1025
+          initialDelaySeconds: 90
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 1025
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+        volumeMounts:
+        - name: secrets-store-inline
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
+      volumes:
+      - name: secrets-store-inline
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: "user-api-secrets-provider"
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: user-api-secrets-provider
+  namespace: user
+spec:
+  provider: aws
+  parameters:
+    objects: |
+      - objectName: "user-api-secrets"  # AWS Secrets Manager secret name
+        objectType: "secretsmanager"
+        jmesPath:
+          - path: "connectionstring"
+            objectAlias: "connectionstring"
+  secretObjects:
+    - secretName: user-api-secrets-csi  # Kubernetes Secret name
+      type: Opaque
+      data:
+        - objectName: "connectionstring"  # Matches jmesPath objectAlias
+          key: connectionstring          # Key in Kubernetes Secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-api-svc
+  namespace: user
+spec:
+  type: NodePort
+  selector:
+    app: user-api
+    module: user
+  ports:
+  - port: 1025
+    targetPort: 1025
+    nodePort: 32001

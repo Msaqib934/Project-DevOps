@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-api
+  labels:
+    name:  user-api
+  namespace: user
+spec:
+  selector:
+    matchLabels:
+      app: user-api
+      module: user
+  template:
+    metadata:
+      labels:
+        app: user-api
+        module: user
+    spec:
+      nodeSelector:
+        module: user
+      containers:
+      - image: {{ECR_REGISTRY}}/user-api:{{IMAGE_TAG}}
+        name: user-api
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          runAsGroup: 1001
+        ports:
+        - containerPort: 1025
+          name: http
+        env:
+          - name: MONGO_URL
+            valueFrom:
+              secretKeyRef:
+                name: user-api-secrets
+                key: connectionstring
+          - name: PORT 
+            value: "1025"
+          - name: ADMIN_EMAIL
+            value: admin@deekshithsn.co.in
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "1Gi"
+          limits:
+            cpu: "500m"
+            memory: "2Gi"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 1025
+          initialDelaySeconds: 90
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 1025
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: user-api-secrets
+  namespace: user
+type: Opaque
+data:
+  connectionstring: bW9uZ29kYjovL21vbmdvYWRtaW46c2VjcmV0QG1vbmdvLWRiLXN2Yy5kYXRhYmFzZS5zdmMuY2x1c3Rlci5sb2NhbC8/cmV0cnlXcml0ZXM9dHJ1ZSZ3PW1ham9yaXR5
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-api-svc
+  namespace: user
+spec:
+  type: NodePort
+  selector:
+    app: user-api
+    module: user
+  ports:
+  - port: 1025
+    targetPort: 1025
+    nodePort: 32001

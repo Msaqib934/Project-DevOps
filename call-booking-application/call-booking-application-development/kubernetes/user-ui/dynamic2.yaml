@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-ui
+  namespace: user
+  labels:
+    app: user-ui
+spec:
+  selector:
+    matchLabels:
+      app: user-ui
+      module: user
+  template:
+    metadata:
+      labels:
+        app: user-ui
+        module: user
+    spec:
+      nodeSelector:
+        module: user
+      containers:
+      - image: {{ECR_REGISTRY}}/user-ui:{{IMAGE_TAG}}
+        name: user-ui
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          runAsGroup: 1001
+        ports:
+        - containerPort: 3000
+          name: http
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "1Gi"
+          limits:
+            cpu: "500m"
+            memory: "2Gi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 90
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+        env:
+          - name: API_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.hostIP  # Use host IP or another dynamic field
+          - name: REACT_APP_API_URL
+            value: "http://$(API_IP):32001"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-ui-svc
+  namespace: user
+spec:
+  type: NodePort
+  selector:
+    app: user-ui
+    module: user
+  ports:
+  - port: 3000
+    targetPort: 3000
+    nodePort: 32000
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: user
+  name: ingress-service
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: user-ui-svc
+              port:
+                number: 80
